@@ -1,0 +1,104 @@
+version: "3.8"
+
+services:
+
+  mariadb:
+    container_name: mariadb
+    build:
+      context: ./mariadb
+      dockerfile: Dockerfile
+    environment:
+      MARIADB_ROOT_PASSWORD: ${MARIADB_ROOT_PASSWORD:-changeme-root}
+      MARIADB_DATABASE: ${MARIADB_DATABASE:-portal}
+      MARIADB_USER: ${MARIADB_USER:-admin}
+      MARIADB_PASSWORD: ${MARIADB_PASSWORD:-changeme-db-pass}
+      REMOTE_DB_DUMP_URL: ${REMOTE_DB_DUMP_URL:-https://example.org/db-dump.sql}
+    restart: on-failure
+    ports:
+      - "3306:3306"
+    volumes:
+      - db_volume:/var/lib/mysql
+    networks:
+      - cmsnet
+
+  cms:
+    container_name: cms
+    build:
+      context: ./cms
+      dockerfile: dev.Dockerfile
+      target: runner
+    environment:
+      DB_HOST: mariadb
+
+      # Liferay JDBC (placeholders)
+      LIFERAY_JDBC_PERIOD_DEFAULT_PERIOD_DRIVER_UPPERCASEC_LASS_UPPERCASEN_AME: org.mariadb.jdbc.Driver
+      LIFERAY_JDBC_PERIOD_DEFAULT_PERIOD_URL: jdbc:mariadb://mariadb:3306/${MARIADB_DATABASE:-portal}?useUnicode=true&characterEncoding=UTF-8&useFastDateParsing=false
+      LIFERAY_JDBC_PERIOD_DEFAULT_PERIOD_USERNAME: ${LIFERAY_DB_USER:-admin}
+      LIFERAY_JDBC_PERIOD_DEFAULT_PERIOD_PASSWORD: ${LIFERAY_DB_PASSWORD:-changeme-db-pass}
+
+      # Liferay runtime
+      LIFERAY_UPGRADE_PERIOD_DATABASE_PERIOD_AUTO_PERIOD_RUN: "true"
+      LIFERAY_JPDA_ENABLED: "true"
+      LIFERAY_JVM_OPTS: ${LIFERAY_JVM_OPTS:-"-Xms5g -Xmx5g -XX:+UseStringDeduplication -XX:+ExitOnOutOfMemoryError"}
+      JPDA_ADDRESS: "*:8000"
+
+      # SMTP (local Maildev; credentials as placeholders)
+      LIFERAY_MAIL_PERIOD_SESSION_PERIOD_MAIL_PERIOD_SMTP_PERIOD_HOST: maildev
+      LIFERAY_MAIL_PERIOD_SESSION_PERIOD_MAIL_PERIOD_SMTP_PERIOD_PORT: 1025
+      LIFERAY_MAIL_PERIOD_SESSION_PERIOD_MAIL_PERIOD_SMTP_PERIOD_STARTTLS_PERIOD_ENABLE: "false"
+      LIFERAY_MAIL_PERIOD_SESSION_PERIOD_MAIL_PERIOD_SMTP_PERIOD_AUTH: "true"
+      LIFERAY_MAIL_PERIOD_SESSION_PERIOD_MAIL_PERIOD_SMTP_PERIOD_USER: ${SMTP_USER:-"smtp_user"}
+      LIFERAY_MAIL_PERIOD_SESSION_PERIOD_MAIL_PERIOD_SMTP_PERIOD_PASSWORD: ${SMTP_PASSWORD:-"smtp_password"}
+
+      # Tuning
+      LIFERAY_BUFFERED_PERIOD_INCREMENT_PERIOD_STANDBY_PERIOD_QUEUE_PERIOD_THRESHOLD: "500"
+      LIFERAY_BUFFERED_PERIOD_INCREMENT_PERIOD_STANDBY_PERIOD_TIME_PERIOD_UPPER_PERIOD_LIMIT: 60
+
+      # Valid hosts (internal & public masked)
+      LIFERAY_VIRTUAL_PERIOD_HOSTS_PERIOD_VALID_PERIOD_HOSTS: ${LIFERAY_VALID_HOSTS:-"admin.local,localhost,cms,127.0.0.1,[::1],[0:0:0:0:0:0:0:1]"}
+    volumes:
+      - ./cms/docker/deploy:/mnt/liferay/deploy
+      - cms_volume:/opt/liferay/data
+    ports:
+      - "8080:8080"
+      - "8000:8000"
+      - "8009:8009"
+      - "11311:11311"
+      - "9201:9201"
+    networks:
+      - cmsnet
+    depends_on:
+      - mariadb
+
+  kibana:
+    image: kibana:7.17.14
+    environment:
+      ELASTICSEARCH_HOSTS: '["http://cms:9201"]'
+    ports:
+      - "5601:5601"
+    networks:
+      - cmsnet
+
+  maildev:
+    hostname: maildev
+    container_name: maildev
+    # Private registry replaced with generic placeholder
+    image: ${MAILDEV_IMAGE:-registry.example.com/common/maildev:1.0.0}
+    environment:
+      MAILDEV_INCOMING_USER: ${SMTP_USER:-"smtp_user"}
+      MAILDEV_INCOMING_PASS: ${SMTP_PASSWORD:-"smtp_password"}
+    ports:
+      - "1080:1080"
+    networks:
+      - cmsnet
+
+volumes:
+  node_modules:
+  snapshots:
+  db_volume:
+    driver: local
+  cms_volume:
+    driver: local
+
+networks:
+  cmsnet:
