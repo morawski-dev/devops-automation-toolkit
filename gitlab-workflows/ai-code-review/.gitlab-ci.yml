@@ -1,0 +1,28 @@
+###########################
+#         STAGES          #
+###########################
+stages:
+  - ai_review
+
+###########################
+#          STEPS          #
+###########################
+########################################################################################################################
+#                                                AI CODE REVIEW                                                        #
+########################################################################################################################
+ai_code_review:
+  stage: ai_review
+  image: python:3.11
+  script:
+    - pip install --no-cache-dir anthropic requests gitpython
+    - python3 scripts/claude_review.py --diff "${CI_MERGE_REQUEST_DIFF_BASE_SHA}"
+    - python3 scripts/post_comments.py --mr-iid "${CI_MERGE_REQUEST_IID}"
+  only:
+    - merge_requests
+  artifacts:
+    reports:
+      codequality: review-report.json
+
+
+
+
